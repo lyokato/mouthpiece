@@ -26,6 +26,9 @@ import android.util.Log;
 
 import mouthpiece.utils.ValueTypeConverter;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class MouthPieceCentral {
 
     private static final String TAG = MouthPieceCentral.class.getSimpleName();
@@ -40,9 +43,17 @@ public class MouthPieceCentral {
 
     public interface Listener {
         public void onCharacteristicReceived(Characteristic characteristic);
-        //public void onCharacteristicRead(boolean success, Characteristic characteristic);
         public void onStateChanged(String serviceUUID, int state);
     }
+
+    public interface ReadResultListener {
+        public void onFinished(boolean result, Characteristic characteristic);
+    }
+
+    public interface WriteResultListener {
+        public void onFinished(boolean result);
+    }
+
 
     private static final int REQUEST_CODE = 15873;
 
@@ -60,11 +71,16 @@ public class MouthPieceCentral {
 
     private boolean available = false;
 
+    private Map<String, WriteResultListener> writeResultListeners;
+    private Map<String, ReadResultListener> readResultListeners;
+
     public MouthPieceCentral(Activity activity, Listener listener) {
         this.activity = activity;
         this.listener = listener;
         this.scanTimeoutMillis = DEFAULT_SCAN_TIMEOUT_MILLIS;
         this.scanIntervalMillis = DEFAULT_SCAN_INTERVAL_MILLIS;
+        this.writeResultListeners = new HashMap<String, WriteResultListener>();
+        this.readResultListeners = new HashMap<String, ReadResultListener>();
     }
 
     public MouthPieceCentral(Activity activity, Listener listener, int scanTimeoutMillis, int scanIntervalMillis) {
@@ -72,6 +88,8 @@ public class MouthPieceCentral {
         this.listener = listener;
         this.scanTimeoutMillis = scanTimeoutMillis;
         this.scanIntervalMillis = scanIntervalMillis;
+        this.writeResultListeners = new HashMap<String, WriteResultListener>();
+        this.readResultListeners = new HashMap<String, ReadResultListener>();
     }
 
     public boolean hasFeature() {
@@ -92,7 +110,7 @@ public class MouthPieceCentral {
 
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_CODE) {
-            if ((bluetoothAdapter != null || bluetoothAdapter.isEnabled())) {
+            if (bluetoothAdapter != null || bluetoothAdapter.isEnabled()) {
                 available = true;
                 initScanner();
             }
@@ -154,28 +172,42 @@ public class MouthPieceCentral {
             }
 
             @Override
-            public void onCharacteristicRead(boolean success, Characteristic characteristic) {
-                if (listener != null && success) {
-                    listener.onCharacteristicReceived(characteristic);
+            public void onCharacteristicWrite(boolean success, Characteristic characteristic) {
+                String uuid = characteristic.getUuid();
+                WriteResultListener resultListener = writeResultListeners.remove(uuid);
+                if (resultListener != null) {
+                    resultListener.onFinished(success);
                 }
-                // ERROR handling?
+            }
+
+            @Override
+            public void onCharacteristicRead(boolean success, Characteristic characteristic) {
+                String uuid = characteristic.getUuid();
+                ReadResultListener resultListener = readResultListeners.remove(uuid);
+                if (resultListener != null) {
+                    resultListener.onFinished(success, characteristic);
+                }
             }
         });
         connection.connect(device);
     }
 
-    public void writeInt(String uuid, int value) {
-        write(uuid, ValueTypeConverter.bytesFromInt(value));
-    }
-
-    public void write(String uuid, byte[] value) {
+    public void write(String uuid, byte[] value, WriteResultListener listener) {
         if (connection != null && connection.isConnected()) {
+            writeResultListeners.put(uuid, listener);
             connection.write(uuid, value);
         }
     }
 
-    public void read(String uuid) {
+    public void send(String uuid, byte[] value) {
         if (connection != null && connection.isConnected()) {
+            connection.send(uuid, value);
+        }
+    }
+
+    public void read(String uuid, ReadResultListener listener) {
+        if (connection != null && connection.isConnected()) {
+            readResultListeners.put(uuid, listener);
             connection.read(uuid);
         }
     }

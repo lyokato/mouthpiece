@@ -19,7 +19,6 @@ package mouthpiece.utils;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-
 public class ValueTypeConverter {
 
     // Borrowed from
@@ -31,6 +30,15 @@ public class ValueTypeConverter {
                 + ((raw[1] & 0xFF) << 8)
                 + ((raw[2] & 0xFF) << 16)
                 + ((raw[3] & 0xFF) << 24));
+    }
+
+    public static int unsignedIntFromBigEndianBytes(byte[] raw) {
+        if (raw.length < 4) throw new IllegalArgumentException("Cannot convert raw data to int");
+
+        return ((raw[3] & 0xFF)
+                + ((raw[2] & 0xFF) << 8)
+                + ((raw[1] & 0xFF) << 16)
+                + ((raw[0] & 0xFF) << 24));
     }
 
     public static byte[] bytesFromInt(int value) {
@@ -51,5 +59,15 @@ public class ValueTypeConverter {
             hexChars[j * 2 + 1] = hexArray[v & 0x0F];
         }
         return new String(hexChars);
+    }
+
+    public static byte[] bytesFromHex(String s) {
+        int len = s.length();
+        byte[] data = new byte[len/2];
+        for(int i = 0; i < len; i+=2){
+            data[i/2] = (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i+1), 16));
+        }
+
+        return data;
     }
 }

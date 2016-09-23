@@ -25,22 +25,26 @@ public class Destination {
     // Should be type for char-setting (uuid, valueType, other...)
     private List<String> observableCharacteristics;
     private List<String> writableCharacteristics;
+    private List<String> sendableCharacteristics;
     private List<String> readableCharacteristics;
 
     public Destination(String serviceUUID, List<String> observeUUIDs,
-                       List<String> writeUUIDs) {
+                       List<String> writeUUIDs, List<String> sendUUIDs) {
         this.service = serviceUUID;
         this.observableCharacteristics = observeUUIDs;
         this.writableCharacteristics = writeUUIDs;
+        this.sendableCharacteristics = sendUUIDs;
         this.readableCharacteristics = new ArrayList<String>();
     }
 
     public Destination(String serviceUUID, List<String> observeUUIDs,
-                       List<String> writeUUIDs, List<String> readUUIDs) {
+                       List<String> writeUUIDs, List<String> sendUUIDs, 
+                       List<String> readUUIDs) {
         this.service = serviceUUID;
         this.observableCharacteristics = observeUUIDs;
         this.writableCharacteristics = writeUUIDs;
         this.readableCharacteristics = readUUIDs;
+        this.sendableCharacteristics = sendUUIDs;
     }
 
     public String getService() {
@@ -53,6 +57,9 @@ public class Destination {
     public List<String> getWritableCharacteristics() {
         return writableCharacteristics;
     }
+    public List<String> getSendableCharacteristics() {
+        return sendableCharacteristics;
+    }
     public List<String> getReadableCharacteristics() {
         return readableCharacteristics;
     }
@@ -63,6 +70,7 @@ public class Destination {
         // Should be type for char-setting (uuid, valueType, other...)
         private List<String> observableCharacteristics = new ArrayList<String>();
         private List<String> writableCharacteristics = new ArrayList<String>();
+        private List<String> sendableCharacteristics = new ArrayList<String>();
         private List<String> readableCharacteristics = new ArrayList<String>();
 
         public Builder(String serviceUUID) {
@@ -77,13 +85,20 @@ public class Destination {
             this.writableCharacteristics.add(uuid);
         }
 
+        public void addSendableCharacteristic(String uuid) {
+            this.sendableCharacteristics.add(uuid);
+        }
+
         public void addReadableCharacteristic(String uuid) {
             this.readableCharacteristics.add(uuid);
         }
 
         public Destination build() {
-            return new Destination(this.service, this.observableCharacteristics,
-                    this.writableCharacteristics, this.readableCharacteristics);
+            return new Destination(this.service, 
+                    this.observableCharacteristics,
+                    this.writableCharacteristics, 
+                    this.sendableCharacteristics, 
+                    this.readableCharacteristics);
         }
     }
 }

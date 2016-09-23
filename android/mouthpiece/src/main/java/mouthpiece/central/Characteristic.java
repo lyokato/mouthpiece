@@ -2,9 +2,6 @@ package mouthpiece.central;
 
 import android.bluetooth.BluetoothGattCharacteristic;
 
-/**
- * Created by lyokato on 15/09/28.
- */
 public class Characteristic {
 
     private BluetoothGattCharacteristic raw;

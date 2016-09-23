@@ -2,8 +2,8 @@
 
 ## This is not stable version
 
-- Sinatra like Peripheral
-- WebSocket like Central
+- Sinatra like Peripheral API
+- WebSocket/Ajax like Central API
 
 AndroidのSDKのBluetoothのAPIを駆使すれば様々なアプリケーションの構築が可能です。
 
@@ -160,8 +160,7 @@ private void stopPeripheral() {
 Peripheralが提供するサービスを利用する側になります。
 
 BLEでは本来Peripheral側がAdvertiseしているパケットのスキャン処理を行わねばなりません。
-その中で発見したデバイスの中に、自分が利用したいサービスを提供しているものがあれば
-GATT接続を開始します。
+その中で発見したデバイスの中に、自分が利用したいサービスを提供しているものがあればGATT接続を開始します。
 
 MouthPieceCentralを利用すれば、ScanningやGATT Connectionの細かい挙動について意識する必要はありません。
 ほとんどWebSocketを利用するコードのように必要最低限のコードでアプリケーションを作成することが出来ます。
@@ -174,7 +173,7 @@ On your Activity class,
 import mouthpiece.central.MouthPieceCentral;
 import mouthpiece.central.Destination;
 
-private MouthPieceCentral remoteController;
+private MouthPieceCentral central;
 ```
 
 Setup a controller with event listener.
@@ -182,17 +181,17 @@ Setup a controller with event listener.
 All you have to do is to override `onCharacteristicReceived`, and `onStateChanged`.
 
 ```java
-private void setupRemoteController() {
-    this.remoteController = new MouthPieceCentral(this, new MouthPieceCentral.Listener() {
+private void setupCentral() {
+    this.central = new MouthPieceCentral(this, new MouthPieceCentral.Listener() {
 
         @Override
         public void onCharacteristicReceived(Characteristic characteristic) {
 
             String serviceUUID = characteristic.getServiceUuid();
             String uuid        = characteristic.getUuid();
-            int value          = characteristic.getIntValue();
+            byte[] value       = characteristic.getValue();
 
-            Log.d(TAG, "found characteristic:" + uuid + ":" + String.valueOf(value));
+            handleChangedValue(uuid, value);
         }
 
         @Override
@@ -215,13 +214,13 @@ private void setupRemoteController() {
             }
         }
     });
-    this.remoteController.initialize();
+    this.central.initialize();
 }
 
 
-private void startRemoteController(Destination destination) {
-    if (this.remoteController.canStart()) {
-        this.remoteController.start(destination);
+private void startCentral() {
+    if (this.central.canStart()) {
+        this.central.start(buildDestination());
     }
 }
 ```
@@ -231,76 +230,130 @@ private void startRemoteController(Destination destination) {
 あらかじめここで指定しておく必要があります。
 
 ```java
-Destination dest = new Destination.Builder(serviceUUID);
-dest.addWritableCharacteristic(chUUID00)
-dest.addWritableCharacteristic(chUUID01)
-dest.addObservableCharacteristic(chUUID02)
-dest.addReadableCharacteristic(chUUID03)
+private Destination buildDestination() {
+    Destination dest = new Destination.Builder(serviceUUID);
+    dest.addWritableCharacteristic(chUUID00)
+    dest.addSendableCharacteristic(chUUID01)
+    dest.addObservableCharacteristic(chUUID02)
+    dest.addReadableCharacteristic(chUUID03)
+    return dest;
+}
 ```
 
-To send a value to remote device, use `write` method.
+- addWritableCharacteristic: 書き込みを行いたいcharacteristicのUUIDを指定します
+- addSendableCharacteristic: 書き込み(ただしレスポンスなし)を行いたいcharacteristicのUUIDを指定します
+- addObservableCharacteristic: 値の変更の監視を行いたいcharacteristicのUUIDを指定します
+- addReadableCharacteristic: 読み込みを行いたいcharacteristicのUUIDを指定します
+
+
+書き込み(ただしレスポンスの確認は行わない)は次のようにsendを呼びます。
 
 ```java
-private void sendValueToRemoteDevice(String uuid, int value) {
-    if (this.remoteController.isConnected()) {
-        this.remoteController.write(uuid, value);
+private void sendValueToRemoteDevice(String uuid, byte[] value) {
+    if (this.central.isConnected()) {
+        this.central.send(uuid, value);
+    }
+}
+```
+
+成否のレスポンスが必要な場合は次のようにwriteを呼びます。
+そのまま引数にコールバックとなるListenerを渡します。
+
+```java
+private void sendValueToRemoteDevice(String uuid, byte[] value) {
+
+    if (this.central.isConnected()) {
+
+        this.central.write(uuid, value, new WriteResultListener(){
+            @Override
+            public void onFinished(bool result) {
+              if (result) {
+                // success
+              } else {
+                // error
+              }
+            }
+
+        });
     }
 }
 ```
 
 また、読み込みを行う場合は、readメソッドを使うとよいでしょう。
-読み込みが完了したら、Listenerの`onCharacteristicReceived`が呼ばれます。
 
 ```java
 private void readValueFromRemoteDevice(String uuid, int value) {
-    if (this.remoteController.isConnected()) {
-        this.remoteController.read(uuid);
+    if (this.central.isConnected()) {
+        this.central.read(uuid, new ReadResultListener(){
+          @Override
+          public void onFinished(bool result, byte[] value) {
+             if (result) {
+               // success
+             } else {
+               // error
+             }
+          }
+        });
     }
 }
 ```
 
-ただ、シンプルなコントローラのような用途においては 
+ただ、シンプルなコントローラのような用途においては
 ほとんどの場合、読み込みは必要なく通知で十分です。
 DestinationにaddObservableCharacteristicでUUIDを追加して接続しておくと
 そのcharacteristicに変化があった場合、自動的に
 ListenerのonCharacteristicReceivedメソッドが呼ばれます。
 
 
+
 強制的に止めたい場合は次のようにstopを呼びます。
 
 ```java
-private void stopRemoteController() {
-    this.remoteController.stop();
+private void stopCentral() {
+    this.central.stop();
 }
 ```
 
-And override lifecycle event methods like this,
-then a controller automatically manages its scanner and connection internally.
+onCreateなどで次のように、Deviceのcapabilityのチェックを行います。
+必要であれば設定画面へのIntentを飛ばします。
+
+```java
+if (!central.hasFeature()) {
+    showError("this device doesn't support BLE features");
+} else {
+    central.initialize();
+}
+```
+
+BLEの設定後、このActivityに戻ってきたときのためにonActivityResultを呼ぶようにしておきます。
 
 ```java
 @Override
 protected void onActivityResult(int requestCode, int resultCode, Intent data) {
     super.onActivityResult(requestCode, resultCode, data);
-    this.remoteController.onActivityResult(requestCode, resultCode, data);
+    this.central.onActivityResult(requestCode, resultCode, data);
 }
+```
 
+次のようにpause/resumeを呼び出すと
+スキャンの再開や切断などをActivityのライフサイクルに合わせて処理します。
+
+```java
 @Override
 public void onResume() {
     super.onResume();
-    this.remoteController.resume();
+    this.central.resume();
 }
 
 @Override
 public void onPause() {
     super.onPause();
-    this.remoteController.pause();
+    this.central.pause();
 }
 
 @Override
 public void onDestroy() {
-    this.remoteController.destroy();
+    this.central.destroy();
     super.onDestroy();
 }
 ```
-
-

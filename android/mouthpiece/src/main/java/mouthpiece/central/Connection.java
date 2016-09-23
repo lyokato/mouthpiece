@@ -54,13 +54,16 @@ public class Connection {
     public interface Listener {
         void onCharacteristicChanged(Characteristic characteristic);
         void onCharacteristicRead(boolean success, Characteristic characteristic);
+        void onCharacteristicWrite(boolean success, Characteristic characteristic);
         void onConnected();
         void onDisconnected(int reason, String errorMessage);
     }
 
     private Map<String, BluetoothGattCharacteristic> observableCharacteristicHolder;
     private Map<String, BluetoothGattCharacteristic> writableCharacteristicHolder;
+    private Map<String, BluetoothGattCharacteristic> sendableCharacteristicHolder;
     private Map<String, BluetoothGattCharacteristic> readableCharacteristicHolder;
+
     private Activity activity;
     private Destination destination;
     private Listener listener;
@@ -72,7 +75,6 @@ public class Connection {
 
     private boolean initialInteractionDone = false;
     private Queue<BluetoothGattDescriptor> initialDescriptorWriteQueue;
-    private Queue<String> initialCharacteristicReadQueue;
 
     public Connection(Activity activity, Destination destination, Listener listener) {
         this.activity = activity;
@@ -84,9 +86,9 @@ public class Connection {
     private void clear() {
         this.observableCharacteristicHolder = new HashMap<String, BluetoothGattCharacteristic>();
         this.writableCharacteristicHolder = new HashMap<String, BluetoothGattCharacteristic>();
+        this.sendableCharacteristicHolder = new HashMap<String, BluetoothGattCharacteristic>();
         this.readableCharacteristicHolder = new HashMap<String, BluetoothGattCharacteristic>();
         this.initialDescriptorWriteQueue = new LinkedList<BluetoothGattDescriptor>();
-        this.initialCharacteristicReadQueue = new LinkedList<String>();
         this.initialInteractionDone = false;
     }
 
@@ -135,6 +137,20 @@ public class Connection {
             throw new InvalidStateException("couldn't write value, because connection is not available.");
         }
         BluetoothGattCharacteristic ch = writableCharacteristicHolder.get(uuid);
+        if (ch == null) {
+            throw new InvalidStateException("characteristic not found: " + uuid);
+        }
+
+        ch.setValue(value);
+        bluetoothGatt.writeCharacteristic(ch);
+    }
+
+    public void send(String uuid, byte[] value) {
+
+        if (!isConnected()) {
+            throw new InvalidStateException("couldn't write value, because connection is not available.");
+        }
+        BluetoothGattCharacteristic ch = sendableCharacteristicHolder.get(uuid);
         if (ch == null) {
             throw new InvalidStateException("characteristic not found: " + uuid);
         }
@@ -231,12 +247,28 @@ public class Connection {
                             return;
                         }
                         int properties = ch.getProperties();
+                        if ((properties & BluetoothGattCharacteristic.PROPERTY_WRITE) != BluetoothGattCharacteristic.PROPERTY_WRITE) {
+                            Log.w(TAG, "this characteristic has no WRITE property");
+                            closeByError(REASON_CONDITION_MISMATCHED, "characteristic has not property WRITE:" + chUUID);
+                            return;
+                        }
+                        writableCharacteristicHolder.put(chUUID, ch);
+                    }
+
+                    List<String> sendableCharacteristicUUIDs = destination.getSendableCharacteristics();
+                    for (String chUUID : sendableCharacteristicUUIDs) {
+                        BluetoothGattCharacteristic ch = service.getCharacteristic(UUID.fromString(chUUID));
+                        if (ch == null) {
+                            closeByError(REASON_CONDITION_MISMATCHED, "characteristic not found:" + chUUID);
+                            return;
+                        }
+                        int properties = ch.getProperties();
                         if ((properties & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) {
                             Log.w(TAG, "this characteristic has no WRITE_NO_RESPONSE property");
                             closeByError(REASON_CONDITION_MISMATCHED, "characteristic has not property WRITE_NO_RESPONSE:" + chUUID);
                             return;
                         }
-                        writableCharacteristicHolder.put(chUUID, ch);
+                        sendableCharacteristicHolder.put(chUUID, ch);
                     }
 
                     state = STATE_CONNECTED;
@@ -261,30 +293,41 @@ public class Connection {
         }
 
         @Override
-        // Result of a characteristic read operation
         public void onCharacteristicRead(BluetoothGatt gatt,
                                          BluetoothGattCharacteristic characteristic,
                                          int status) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 listener.onCharacteristicRead(true, new Characteristic(characteristic));
             } else {
-                listener.onCharacteristicRead(false, null);
+                listener.onCharacteristicRead(false, new Characteristic(characteristic));
             }
-            if (!initialInteractionDone) {
+            /*if (!initialInteractionDone) {
                 readNextCharacteristic();
+            }*/
+        }
+
+        @Override
+        public void onCharacteristicWrite(BluetoothGatt gatt,
+                                          BluetoothGattCharacteristic characteristic,
+                                          int status) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                listener.onCharacteristicWrite(true, new Characteristic(characteristic));
+            } else {
+                listener.onCharacteristicWrite(false, new Characteristic(characteristic));
             }
         }
 
         @Override
-        public void onDescriptorWrite (BluetoothGatt gatt,
-                                       BluetoothGattDescriptor descriptor,
-                                       int status) {
+        public void onDescriptorWrite(BluetoothGatt gatt,
+                                      BluetoothGattDescriptor descriptor,
+                                      int status) {
             if (!initialInteractionDone) {
                 writeNextDescriptor();
             }
         }
     };
 
+    /*
     private void readNextCharacteristic() {
         if (!isConnected()) {
             Log.i(TAG, "connection closed. so cancel initialization");
@@ -301,14 +344,16 @@ public class Connection {
             initialInteractionDone = true;
         }
     }
+    */
 
     private void writeNextDescriptor() {
         BluetoothGattDescriptor d = initialDescriptorWriteQueue.poll();
         if (d != null) {
             bluetoothGatt.writeDescriptor(d);
-        } else {
-            readNextCharacteristic();
         }
+        /* else {
+            readNextCharacteristic();
+        }*/
     }
 
     private BluetoothGattCharacteristic observeCharacteristic(BluetoothGattService service, String characteristicUUID) {
@@ -342,7 +387,7 @@ public class Connection {
 
         descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
         initialDescriptorWriteQueue.offer(descriptor);
-        initialCharacteristicReadQueue.offer(characteristicUUID);
+        //initialCharacteristicReadQueue.offer(characteristicUUID);
         return ch;
     }
 

@@ -72,7 +72,7 @@ public class MouthPiecePeripheral {
     private boolean includeTxPower = false;
 
     public static MouthPiecePeripheral build(Activity activity, MouthPieceService service) {
-        return new MouthPiecePeripheral.Builder(activity).service(service).build();
+        return new Builder(activity).service(service).build();
     }
 
     MouthPiecePeripheral(Context context, Listener listener, Map<UUID, MouthPieceService> services) {
@@ -245,28 +245,6 @@ public class MouthPiecePeripheral {
                 }
             }
 
-            /*
-            @Override
-            public void onDescriptorReadRequest(BluetoothDevice device, int requestId, 
-                    int offset, BluetoothGattDescriptor descriptor) {
-
-            }
-
-            @Override
-            public void onNotificationSent(BluetoothDevice device, int status) {
-
-            }
-
-            @Override
-            public void onExecuteWrite(BluetoothDevice device, int requestId, boolean execute) {
-                if (execute) {
-                    // Written
-                } else {
-                    // Cancelled
-                }
-            }
-            */
-
             @Override
             public void onDescriptorWriteRequest(BluetoothDevice device, int requestId, BluetoothGattDescriptor descriptor,
                     boolean preparedWrite, boolean responseNeeded, int offset, byte[] value) {
@@ -314,7 +292,7 @@ public class MouthPiecePeripheral {
                 UUID serviceUUID = characteristic.getService().getUuid();
                 MouthPieceService service = services.get(serviceUUID);
 
-                    if (service.canHandle(req.getUuid(), MouthPiecePeripheral.Event.READ)) {
+                    if (service.canHandle(req.getUuid(), Event.READ)) {
                         service.dispatchReadRequest(req, res);
                         //break;
                     }
@@ -335,7 +313,7 @@ public class MouthPiecePeripheral {
                 UUID serviceUUID = characteristic.getService().getUuid();
                 MouthPieceService service = services.get(serviceUUID);
 
-                if (service.canHandle(req.getUuid(), MouthPiecePeripheral.Event.WRITE)) {
+                if (service.canHandle(req.getUuid(), Event.WRITE)) {
                     service.dispatchWriteRequest(req, res, rawServer);
                 }
 
@@ -348,9 +326,9 @@ public class MouthPiecePeripheral {
 
         private Map<UUID, MouthPieceService> services;
         private Context context;
-        private MouthPiecePeripheral.Listener listener;
+        private Listener listener;
 
-        public Builder(Context context, MouthPiecePeripheral.Listener listener) {
+        public Builder(Context context, Listener listener) {
             this.listener = listener;
             this.services = new HashMap<UUID, MouthPieceService>();
             this.context = context;
